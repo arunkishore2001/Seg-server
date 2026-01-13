@@ -57,78 +57,119 @@
 </div>
 
 <script>
-async function processLinks() {
-    const links = document.getElementById('inputLinks').value.split('\n').map(l => l.trim()).filter(Boolean);
+   async function processLinks() {
+    const links = document.getElementById('inputLinks').value
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean);
+
     if (!links.length) {
         alert("Please enter some links");
         return;
     }
 
-    ["rhsCont", "testimonial", "noLhs", "notPresent"].forEach(id => {
-        document.getElementById(id + "Block").style.display = "none";
-        document.getElementById(id + "Links").textContent = "";
-    });
     document.getElementById("progressBar").style.width = "0%";
 
-    let rhsCont = [];
-    let testimonial = [];
-    let noLhs = [];
-    let notPresent = [];
+    const rhsBySection = {};
+    const scrollBySection = {};
+    const testimonial = [];
+    const notPresent = [];
+
     let completed = 0;
 
     const fetchPromises = links.map(async (link) => {
         try {
-            const proxyUrl = "/api/check?url=" + encodeURIComponent(link);
-            const res = await fetch(proxyUrl);
+            const res = await fetch("/api/check?url=" + encodeURIComponent(link));
             const html = await res.text();
 
-            const hasRhs = html.includes('class="rhs-cont"') || html.includes("class='rhs-cont'");
-            const hasTestimonial = html.includes('class="apm-testimonial-section"') || html.includes("class='apm-testimonial-section'");
-            const hasScroll = html.includes('id="scroll"') || html.includes("id='scroll'");
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const sections = Array.from(doc.querySelectorAll("section"));
 
-            if (hasRhs && hasTestimonial) {
+            let rhsFound = false;
+            let scrollFound = false;
+            let testimonialFound = false;
+
+            sections.forEach((section, index) => {
+                const sectionNo = index + 1;
+
+                if (section.querySelector(".apm-testimonial-section")) {
+                    testimonialFound = true;
+                }
+
+                if (section.querySelector(".rhs-cont")) {
+                    rhsFound = true;
+                    rhsBySection[sectionNo] ??= [];
+                    rhsBySection[sectionNo].push(link);
+                }
+
+                if (section.querySelector("#scroll")) {
+                    scrollFound = true;
+                    scrollBySection[sectionNo] ??= [];
+                    scrollBySection[sectionNo].push(link);
+                }
+            });
+
+            if (testimonialFound) {
                 testimonial.push(link);
-            } else if (hasRhs) {
-                rhsCont.push(link);
-            } else if (hasScroll) {
-                noLhs.push(link);
-            } else {
+            }
+
+            if (!rhsFound && !scrollFound && !testimonialFound) {
                 notPresent.push(link);
             }
+
         } catch (err) {
             notPresent.push(link + " (⚠️ Error)");
         } finally {
             completed++;
-            const percent = Math.round((completed / links.length) * 100);
-            document.getElementById("progressBar").style.width = percent + "%";
+            document.getElementById("progressBar").style.width =
+                Math.round((completed / links.length) * 100) + "%";
         }
     });
 
     await Promise.allSettled(fetchPromises);
 
-    updateBlock('rhsContBlock', 'rhsContLinks', rhsCont);
-    updateBlock('testimonialBlock', 'testimonialLinks', testimonial);
-    updateBlock('noLhsBlock', 'noLhsLinks', noLhs);
-    updateBlock('notPresentBlock', 'notPresentLinks', notPresent);
+    renderSectionBlocks("rhs-cont", rhsBySection);
+    renderSectionBlocks("no lhs (scroll)", scrollBySection);
+    renderSimpleBlock("testimonial", testimonial);
+    renderSimpleBlock("not present", notPresent);
 }
 
-function updateBlock(blockId, linksId, links) {
-    const block = document.getElementById(blockId);
-    const pre = document.getElementById(linksId);
-    if (links.length) {
-        block.style.display = 'block';
-        pre.textContent = links.join('\n');
-    } else {
-        block.style.display = 'none';
-        pre.textContent = '';
-    }
+/* ---------- UI helpers ---------- */
+
+function renderSectionBlocks(title, data) {
+    Object.keys(data).forEach(sectionNo => {
+        const block = document.createElement("div");
+        block.className = "block";
+
+        block.innerHTML = `
+            <h3>${title} – Section ${sectionNo}
+                <button onclick="copyDynamic(this)">Copy</button>
+            </h3>
+            <pre>${data[sectionNo].join("\n")}</pre>
+        `;
+        document.getElementById("results").appendChild(block);
+    });
 }
 
-function copyBlock(id) {
-    const text = document.getElementById(id).textContent;
-    if (!text) return;
+function renderSimpleBlock(title, links) {
+    if (!links.length) return;
+
+    const block = document.createElement("div");
+    block.className = "block";
+
+    block.innerHTML = `
+        <h3>${title}
+            <button onclick="copyDynamic(this)">Copy</button>
+        </h3>
+        <pre>${links.join("\n")}</pre>
+    `;
+    document.getElementById("results").appendChild(block);
+}
+
+function copyDynamic(btn) {
+    const text = btn.closest(".block").querySelector("pre").textContent;
     navigator.clipboard.writeText(text).then(() => {
-        alert("Copied to clipboard!");
+        alert("Copied!");
     });
 }
 </script>
