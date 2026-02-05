@@ -57,7 +57,7 @@
 </div>
 
 <script>
-   async function processLinks() {
+async function processLinks() {
     const links = document.getElementById('inputLinks').value
         .split('\n')
         .map(l => l.trim())
@@ -68,88 +68,50 @@
         return;
     }
 
+    document.getElementById("results").innerHTML = "";
     document.getElementById("progressBar").style.width = "0%";
 
-    const rhsBySection = {};
-    const scrollBySection = {};
-    const testimonial = [];
-    const notPresent = [];
+    // ✅ Sets = no duplicates
+    const rhsSet = new Set();
+    const scrollSet = new Set();
+    const notPresentSet = new Set();
 
     let completed = 0;
 
-    const fetchPromises = links.map(async (link) => {
-        try {
-            const res = await fetch("/api/check?url=" + encodeURIComponent(link));
-            const html = await res.text();
+    await Promise.allSettled(
+        links.map(async (link) => {
+            try {
+                const res = await fetch("/api/check?url=" + encodeURIComponent(link));
+                const html = await res.text();
 
-            const doc = new DOMParser().parseFromString(html, "text/html");
-            const sections = Array.from(doc.querySelectorAll("section"));
+                const doc = new DOMParser().parseFromString(html, "text/html");
 
-            let rhsFound = false;
-            let scrollFound = false;
-            let testimonialFound = false;
+                const hasRhs = doc.querySelector(".rhs-cont");
+                const hasScroll = doc.querySelector("#scroll");
 
-            sections.forEach((section, index) => {
-                const sectionNo = index + 1;
+                if (hasRhs) rhsSet.add(link);
+                if (hasScroll) scrollSet.add(link);
 
-                if (section.querySelector(".apm-testimonial-section")) {
-                    testimonialFound = true;
+                if (!hasRhs && !hasScroll) {
+                    notPresentSet.add(link);
                 }
 
-                if (section.querySelector(".rhs-cont")) {
-                    rhsFound = true;
-                    rhsBySection[sectionNo] ??= [];
-                    rhsBySection[sectionNo].push(link);
-                }
-
-                if (section.querySelector("#scroll")) {
-                    scrollFound = true;
-                    scrollBySection[sectionNo] ??= [];
-                    scrollBySection[sectionNo].push(link);
-                }
-            });
-
-            if (testimonialFound) {
-                testimonial.push(link);
+            } catch {
+                notPresentSet.add(link + " (⚠️ Error)");
+            } finally {
+                completed++;
+                document.getElementById("progressBar").style.width =
+                    Math.round((completed / links.length) * 100) + "%";
             }
+        })
+    );
 
-            if (!rhsFound && !scrollFound && !testimonialFound) {
-                notPresent.push(link);
-            }
-
-        } catch (err) {
-            notPresent.push(link + " (⚠️ Error)");
-        } finally {
-            completed++;
-            document.getElementById("progressBar").style.width =
-                Math.round((completed / links.length) * 100) + "%";
-        }
-    });
-
-    await Promise.allSettled(fetchPromises);
-
-    renderSectionBlocks("rhs-cont", rhsBySection);
-    renderSectionBlocks("no lhs (scroll)", scrollBySection);
-    renderSimpleBlock("testimonial", testimonial);
-    renderSimpleBlock("not present", notPresent);
+    renderSimpleBlock("rhs-cont", [...rhsSet]);
+    renderSimpleBlock("scroll", [...scrollSet]);
+    renderSimpleBlock("not present", [...notPresentSet]);
 }
 
 /* ---------- UI helpers ---------- */
-
-function renderSectionBlocks(title, data) {
-    Object.keys(data).forEach(sectionNo => {
-        const block = document.createElement("div");
-        block.className = "block";
-
-        block.innerHTML = `
-            <h3>${title} – Section ${sectionNo}
-                <button onclick="copyDynamic(this)">Copy</button>
-            </h3>
-            <pre>${data[sectionNo].join("\n")}</pre>
-        `;
-        document.getElementById("results").appendChild(block);
-    });
-}
 
 function renderSimpleBlock(title, links) {
     if (!links.length) return;
@@ -173,6 +135,7 @@ function copyDynamic(btn) {
     });
 }
 </script>
+
 
 </body>
 </html>
