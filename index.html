@@ -71,10 +71,11 @@ async function processLinks() {
     document.getElementById("results").innerHTML = "";
     document.getElementById("progressBar").style.width = "0%";
 
-    const rhsSet = new Set();
-    const scrollSet = new Set();
+    // scrollIndex => Set(links)
+    const scrollByIndex = {};
+    const rhsByIndex = {};
     const notPresentSet = new Set();
-    const notFoundSet = new Set(); // ✅ NEW
+    const notFoundSet = new Set();
 
     let completed = 0;
 
@@ -84,13 +85,12 @@ async function processLinks() {
                 const res = await fetch("/api/check?url=" + encodeURIComponent(link));
                 const data = await res.json();
 
-                // ✅ 404 handling
+                // 404 handling
                 if (data.status === 404) {
                     notFoundSet.add(link);
                     return;
                 }
 
-                // ❌ skip empty / blocked pages
                 if (!data.html) {
                     notPresentSet.add(link);
                     return;
@@ -98,15 +98,27 @@ async function processLinks() {
 
                 const doc = new DOMParser().parseFromString(data.html, "text/html");
 
-                const hasRhs = doc.querySelector(".rhs-cont");
-                const hasScroll = doc.querySelector("#scroll");
+                // ✅ ONLY valid scroll containers
+                const scrollBlocks = Array.from(doc.querySelectorAll(".scroll"));
 
-                if (hasRhs) rhsSet.add(link);
-                if (hasScroll) scrollSet.add(link);
-
-                if (!hasRhs && !hasScroll) {
+                if (!scrollBlocks.length) {
                     notPresentSet.add(link);
+                    return;
                 }
+
+                scrollBlocks.forEach((scrollDiv, index) => {
+                    const scrollNo = index + 1;
+
+                    // record scroll presence
+                    scrollByIndex[scrollNo] ??= new Set();
+                    scrollByIndex[scrollNo].add(link);
+
+                    // rhs ONLY if inside scroll
+                    if (scrollDiv.querySelector(".rhs-cont")) {
+                        rhsByIndex[scrollNo] ??= new Set();
+                        rhsByIndex[scrollNo].add(link);
+                    }
+                });
 
             } catch {
                 notPresentSet.add(link + " (⚠️ Error)");
@@ -118,13 +130,28 @@ async function processLinks() {
         })
     );
 
-    renderSimpleBlock("rhs-cont", [...rhsSet]);
-    renderSimpleBlock("scroll", [...scrollSet]);
-    renderSimpleBlock("404 not found", [...notFoundSet]); // ✅ NEW
+    renderSectionBlocks("scroll", scrollByIndex);
+    renderSectionBlocks("rhs-cont (inside scroll)", rhsByIndex);
+    renderSimpleBlock("404 not found", [...notFoundSet]);
     renderSimpleBlock("not present", [...notPresentSet]);
 }
 
 /* ---------- UI helpers ---------- */
+
+function renderSectionBlocks(title, data) {
+    Object.keys(data).forEach(no => {
+        const block = document.createElement("div");
+        block.className = "block";
+
+        block.innerHTML = `
+            <h3>${title} – Scroll ${no}
+                <button onclick="copyDynamic(this)">Copy</button>
+            </h3>
+            <pre>${[...data[no]].join("\n")}</pre>
+        `;
+        document.getElementById("results").appendChild(block);
+    });
+}
 
 function renderSimpleBlock(title, links) {
     if (!links.length) return;
@@ -143,9 +170,7 @@ function renderSimpleBlock(title, links) {
 
 function copyDynamic(btn) {
     const text = btn.closest(".block").querySelector("pre").textContent;
-    navigator.clipboard.writeText(text).then(() => {
-        alert("Copied!");
-    });
+    navigator.clipboard.writeText(text).then(() => alert("Copied!"));
 }
 </script>
 
