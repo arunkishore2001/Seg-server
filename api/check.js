@@ -2,7 +2,7 @@ export default async function handler(req, res) {
     const { url } = req.query;
 
     if (!url) {
-        return res.status(400).send("");
+        return res.status(400).json({ status: 400, html: "" });
     }
 
     try {
@@ -17,16 +17,18 @@ export default async function handler(req, res) {
             redirect: "follow"
         });
 
-        if (!response.ok) {
-            // treat blocked pages as empty
-            return res.status(200).send("");
-        }
+        const html = response.ok ? await response.text() : "";
 
-        const html = await response.text();
-        res.status(200).send(html);
+        return res.status(200).json({
+            status: response.status,
+            html
+        });
 
     } catch (err) {
         console.error("Fetch error:", err.message);
-        res.status(200).send("");
+        return res.status(200).json({
+            status: 0,
+            html: ""
+        });
     }
 }
