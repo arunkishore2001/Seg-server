@@ -49,6 +49,9 @@ async function processLinks() {
         .map(l => l.trim())
         .filter(Boolean);
 
+    console.clear();
+    console.log("INPUT LINKS:", links);
+
     if (!links.length) {
         alert("Please enter links");
         return;
@@ -66,50 +69,67 @@ async function processLinks() {
 
     await Promise.allSettled(
         links.map(async (link) => {
+            console.log("🔗 Processing:", link);
+
             try {
                 const res = await fetch("/api/check?url=" + encodeURIComponent(link));
                 const data = await res.json();
 
-                // 404
+                console.log("➡️ Status:", data.status);
+
                 if (data.status === 404) {
+                    console.warn("❌ 404:", link);
                     notFoundSet.add(link);
                     return;
                 }
 
                 if (!data.html) {
+                    console.warn("⚠️ Empty HTML:", link);
                     notPresentSet.add(link);
                     return;
                 }
 
                 const doc = new DOMParser().parseFromString(data.html, "text/html");
 
+                const allSections = Array.from(doc.querySelectorAll("section"));
+                console.log("📦 Total <section> count:", allSections.length);
+
                 const scrollDivs = Array.from(doc.querySelectorAll(".scroll"));
+                console.log("🌀 .scroll found:", scrollDivs.length);
 
                 if (!scrollDivs.length) {
+                    console.warn("🚫 No .scroll found:", link);
                     notPresentSet.add(link);
                     return;
                 }
 
-                scrollDivs.forEach(scrollDiv => {
-                    // ✅ find nearest section
-                    const section = scrollDiv.closest("section");
-                    if (!section) return;
+                scrollDivs.forEach((scrollDiv, i) => {
+                    console.log(`➡️ Scroll index ${i + 1}`);
 
-                    const sections = Array.from(doc.querySelectorAll("section"));
-                    const sectionNo = sections.indexOf(section) + 1;
+                    const parentSection = scrollDiv.closest("section");
 
-                    // scroll
+                    if (!parentSection) {
+                        console.warn("❗ scroll has NO parent <section>");
+                        return;
+                    }
+
+                    const sectionNo = allSections.indexOf(parentSection) + 1;
+                    console.log("📍 Scroll belongs to section:", sectionNo);
+
                     scrollBySection[sectionNo] ??= new Set();
                     scrollBySection[sectionNo].add(link);
 
-                    // rhs only inside scroll
-                    if (scrollDiv.querySelector(".rhs-cont")) {
+                    const hasRhs = !!scrollDiv.querySelector(".rhs-cont");
+                    console.log("➡️ rhs-cont inside scroll:", hasRhs);
+
+                    if (hasRhs) {
                         rhsBySection[sectionNo] ??= new Set();
                         rhsBySection[sectionNo].add(link);
                     }
                 });
 
-            } catch {
+            } catch (err) {
+                console.error("🔥 JS Error:", err);
                 notPresentSet.add(link + " (⚠️ Error)");
             } finally {
                 completed++;
@@ -118,6 +138,11 @@ async function processLinks() {
             }
         })
     );
+
+    console.log("✅ scrollBySection:", scrollBySection);
+    console.log("✅ rhsBySection:", rhsBySection);
+    console.log("❌ notPresent:", [...notPresentSet]);
+    console.log("❌ notFound:", [...notFoundSet]);
 
     renderSectionBlocks("scroll", scrollBySection);
     renderSectionBlocks("rhs-cont", rhsBySection);
