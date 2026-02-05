@@ -2,25 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Website Class Sorter</title>
-
+<title>Website Class Checker</title>
 <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     textarea { width: 100%; height: 150px; }
     .block { border: 1px solid #ccc; padding: 10px; margin-top: 15px; border-radius: 5px; }
     .block h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
-    button { padding: 5px 10px; cursor: pointer; }
-    pre { background: #f4f4f4; padding: 10px; white-space: pre-wrap; }
+    button { padding: 5px 10px; }
+    pre { background: #f4f4f4; padding: 10px; white-space: pre-wrap; word-wrap: break-word; }
+    .result-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 10px;
+        border-bottom: 1px solid #ddd;
+        font-size: 14px;
+    }
+    .result-row:nth-child(even) {
+        background: #fafafa;
+    }
+    .url { font-weight: bold; }
+    .status { font-style: italic; }
 </style>
 </head>
-
 <body>
 
-<h2>Website Class Sorter (Section-wise)</h2>
-
-<textarea id="inputLinks" placeholder="Paste your links here (one per line)"></textarea><br><br>
+<h2>Website Class Sorter (Live Check)</h2>
+<textarea id="inputLinks" placeholder="Paste your links here (one per line)"></textarea><br>
 <button onclick="processLinks()">Process</button>
-
 <div style="margin-top:20px;">
     <div style="background:#eee; border-radius:5px; height:20px; width:100%; margin-bottom:10px;">
         <div id="progressBar" style="background:#4caf50; height:100%; width:0%; border-radius:5px;"></div>
@@ -28,61 +36,89 @@
     <div id="results"></div>
 </div>
 
+<div id="rhsContBlock" class="block" style="display:none;">
+    <h3>rhs-cont <button onclick="copyBlock('rhsContLinks')">Copy</button></h3>
+    <pre id="rhsContLinks"></pre>
+</div>
+
+<div id="testimonialBlock" class="block" style="display:none;">
+    <h3>Testimonial <button onclick="copyBlock('testimonialLinks')">Copy</button></h3>
+    <pre id="testimonialLinks"></pre>
+</div>
+
+<div id="noLhsBlock" class="block" style="display:none;">
+    <h3>no lhs <button onclick="copyBlock('noLhsLinks')">Copy</button></h3>
+    <pre id="noLhsLinks"></pre>
+</div>
+
+<div id="notPresentBlock" class="block" style="display:none;">
+    <h3>not present <button onclick="copyBlock('notPresentLinks')">Copy</button></h3>
+    <pre id="notPresentLinks"></pre>
+</div>
+
 <script>
-async function processLinks() {
-    const links = document.getElementById("inputLinks").value
-        .split("\n")
+   async function processLinks() {
+    const links = document.getElementById('inputLinks').value
+        .split('\n')
         .map(l => l.trim())
         .filter(Boolean);
 
     if (!links.length) {
-        alert("Please enter links");
+        alert("Please enter some links");
         return;
     }
 
-    document.getElementById("results").innerHTML = "";
     document.getElementById("progressBar").style.width = "0%";
 
-    const scrollBySection = {};
     const rhsBySection = {};
-    const globalNotPresent = [];
+    const scrollBySection = {};
+    const testimonial = [];
+    const notPresent = [];
 
     let completed = 0;
 
-    const requests = links.map(async (link) => {
-        let foundAnything = false;
-
+    const fetchPromises = links.map(async (link) => {
         try {
             const res = await fetch("/api/check?url=" + encodeURIComponent(link));
             const html = await res.text();
+
             const doc = new DOMParser().parseFromString(html, "text/html");
             const sections = Array.from(doc.querySelectorAll("section"));
+
+            let rhsFound = false;
+            let scrollFound = false;
+            let testimonialFound = false;
 
             sections.forEach((section, index) => {
                 const sectionNo = index + 1;
 
-                const hasScroll = section.querySelector(".scroll");
-                const hasRhs = section.querySelector(".rhs-cont");
-
-                if (hasScroll) {
-                    scrollBySection[sectionNo] ??= new Set();
-                    scrollBySection[sectionNo].add(link);
-                    foundAnything = true;
+                if (section.querySelector(".apm-testimonial-section")) {
+                    testimonialFound = true;
                 }
 
-                if (hasRhs) {
-                    rhsBySection[sectionNo] ??= new Set();
-                    rhsBySection[sectionNo].add(link);
-                    foundAnything = true;
+                if (section.querySelector(".rhs-cont")) {
+                    rhsFound = true;
+                    rhsBySection[sectionNo] ??= [];
+                    rhsBySection[sectionNo].push(link);
+                }
+
+                if (section.querySelector("#scroll")) {
+                    scrollFound = true;
+                    scrollBySection[sectionNo] ??= [];
+                    scrollBySection[sectionNo].push(link);
                 }
             });
 
-            if (!foundAnything) {
-                globalNotPresent.push(link);
+            if (testimonialFound) {
+                testimonial.push(link);
+            }
+
+            if (!rhsFound && !scrollFound && !testimonialFound) {
+                notPresent.push(link);
             }
 
         } catch (err) {
-            globalNotPresent.push(link + " (⚠️ Error)");
+            notPresent.push(link + " (⚠️ Error)");
         } finally {
             completed++;
             document.getElementById("progressBar").style.width =
@@ -90,31 +126,29 @@ async function processLinks() {
         }
     });
 
-    await Promise.allSettled(requests);
+    await Promise.allSettled(fetchPromises);
 
-    renderSectionBlocks("scroll present", scrollBySection);
     renderSectionBlocks("rhs-cont", rhsBySection);
-    renderSimpleBlock("not present (no scroll & no rhs)", globalNotPresent);
+    renderSectionBlocks("no lhs (scroll)", scrollBySection);
+    renderSimpleBlock("testimonial", testimonial);
+    renderSimpleBlock("not present", notPresent);
 }
 
-/* ---------- UI HELPERS ---------- */
+/* ---------- UI helpers ---------- */
 
 function renderSectionBlocks(title, data) {
-    Object.keys(data)
-        .sort((a, b) => a - b)
-        .forEach(sectionNo => {
-            const block = document.createElement("div");
-            block.className = "block";
+    Object.keys(data).forEach(sectionNo => {
+        const block = document.createElement("div");
+        block.className = "block";
 
-            block.innerHTML = `
-                <h3>${title} – Section ${sectionNo}
-                    <button onclick="copyDynamic(this)">Copy</button>
-                </h3>
-                <pre>${Array.from(data[sectionNo]).join("\n")}</pre>
-            `;
-
-            document.getElementById("results").appendChild(block);
-        });
+        block.innerHTML = `
+            <h3>${title} – Section ${sectionNo}
+                <button onclick="copyDynamic(this)">Copy</button>
+            </h3>
+            <pre>${data[sectionNo].join("\n")}</pre>
+        `;
+        document.getElementById("results").appendChild(block);
+    });
 }
 
 function renderSimpleBlock(title, links) {
@@ -129,13 +163,14 @@ function renderSimpleBlock(title, links) {
         </h3>
         <pre>${links.join("\n")}</pre>
     `;
-
     document.getElementById("results").appendChild(block);
 }
 
 function copyDynamic(btn) {
     const text = btn.closest(".block").querySelector("pre").textContent;
-    navigator.clipboard.writeText(text).then(() => alert("Copied!"));
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Copied!");
+    });
 }
 </script>
 
