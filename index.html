@@ -59,8 +59,8 @@ async function processLinks() {
 
     const scrollBySection = {};
     const rhsBySection = {};
-    const notFoundSet = new Set();
     const notPresentSet = new Set();
+    const notFoundSet = new Set();
 
     let completed = 0;
 
@@ -82,32 +82,32 @@ async function processLinks() {
                 }
 
                 const doc = new DOMParser().parseFromString(data.html, "text/html");
-                const sections = Array.from(doc.querySelectorAll("section"));
 
-                let found = false;
+                const scrollDivs = Array.from(doc.querySelectorAll(".scroll"));
 
-                sections.forEach((section, index) => {
-                    const sectionNo = index + 1;
+                if (!scrollDivs.length) {
+                    notPresentSet.add(link);
+                    return;
+                }
 
-                    const scrollDiv = section.querySelector(".scroll");
-                    if (scrollDiv) {
-                        found = true;
+                scrollDivs.forEach(scrollDiv => {
+                    // ✅ find nearest section
+                    const section = scrollDiv.closest("section");
+                    if (!section) return;
 
-                        // scroll
-                        scrollBySection[sectionNo] ??= new Set();
-                        scrollBySection[sectionNo].add(link);
+                    const sections = Array.from(doc.querySelectorAll("section"));
+                    const sectionNo = sections.indexOf(section) + 1;
 
-                        // rhs ONLY inside scroll
-                        if (scrollDiv.querySelector(".rhs-cont")) {
-                            rhsBySection[sectionNo] ??= new Set();
-                            rhsBySection[sectionNo].add(link);
-                        }
+                    // scroll
+                    scrollBySection[sectionNo] ??= new Set();
+                    scrollBySection[sectionNo].add(link);
+
+                    // rhs only inside scroll
+                    if (scrollDiv.querySelector(".rhs-cont")) {
+                        rhsBySection[sectionNo] ??= new Set();
+                        rhsBySection[sectionNo].add(link);
                     }
                 });
-
-                if (!found) {
-                    notPresentSet.add(link);
-                }
 
             } catch {
                 notPresentSet.add(link + " (⚠️ Error)");
@@ -119,27 +119,29 @@ async function processLinks() {
         })
     );
 
-    renderSectionBlocks("scroll present", scrollBySection);
-    renderSectionBlocks("rhs-cont present", rhsBySection);
-    renderSimpleBlock("404 not found", [...notFoundSet]);
+    renderSectionBlocks("scroll", scrollBySection);
+    renderSectionBlocks("rhs-cont", rhsBySection);
     renderSimpleBlock("not present", [...notPresentSet]);
+    renderSimpleBlock("404 not found", [...notFoundSet]);
 }
 
 /* ---------- UI helpers ---------- */
 
 function renderSectionBlocks(title, data) {
-    Object.keys(data).forEach(sectionNo => {
-        const block = document.createElement("div");
-        block.className = "block";
+    Object.keys(data)
+        .sort((a, b) => a - b)
+        .forEach(sectionNo => {
+            const block = document.createElement("div");
+            block.className = "block";
 
-        block.innerHTML = `
-            <h3>${title} – Section ${sectionNo}
-                <button onclick="copyDynamic(this)">Copy</button>
-            </h3>
-            <pre>${[...data[sectionNo]].join("\n")}</pre>
-        `;
-        document.getElementById("results").appendChild(block);
-    });
+            block.innerHTML = `
+                <h3>${title} (Section ${sectionNo})
+                    <button onclick="copyDynamic(this)">Copy</button>
+                </h3>
+                <pre>${[...data[sectionNo]].join("\n")}</pre>
+            `;
+            document.getElementById("results").appendChild(block);
+        });
 }
 
 function renderSimpleBlock(title, links) {
@@ -162,6 +164,7 @@ function copyDynamic(btn) {
     navigator.clipboard.writeText(text).then(() => alert("Copied!"));
 }
 </script>
+
 
 </body>
 </html>
