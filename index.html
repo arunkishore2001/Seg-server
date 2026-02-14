@@ -37,23 +37,12 @@ pre {
     width:0%;
     border-radius:5px;
 }
-.url-line {
-    margin-bottom:8px;
-}
-.section-badge {
-    background:#4caf50;
-    color:#fff;
-    padding:2px 6px;
-    border-radius:4px;
-    font-size:12px;
-    margin-left:5px;
-}
 </style>
 </head>
 
 <body>
 
-<h2>Website Class Sorter (LHS / NOLHS with Section Count)</h2>
+<h2>Website Class Sorter (Grouped by Section)</h2>
 
 <textarea id="inputLinks" placeholder="Paste links (one per line)"></textarea><br><br>
 <button onclick="processLinks()">Process</button>
@@ -80,8 +69,8 @@ async function processLinks() {
     document.getElementById("results").innerHTML = "";
     document.getElementById("progressBar").style.width = "0%";
 
-    const nolhsMap = {};   // { url: [sections] }
-    const lhsMap = {};     // { url: [sections] }
+    const lhsBySection = {};     // LHS grouped by section
+    const nolhsBySection = {};   // NOLHS grouped by section
     const notPresentSet = new Set();
     const notFoundSet = new Set();
 
@@ -125,11 +114,11 @@ async function processLinks() {
                     const hasRhs = scrollDiv.querySelector(".rhs-cont");
 
                     if (hasRhs) {
-                        lhsMap[link] ??= new Set();
-                        lhsMap[link].add(sectionNo);
+                        lhsBySection[sectionNo] ??= new Set();
+                        lhsBySection[sectionNo].add(link);
                     } else {
-                        nolhsMap[link] ??= new Set();
-                        nolhsMap[link].add(sectionNo);
+                        nolhsBySection[sectionNo] ??= new Set();
+                        nolhsBySection[sectionNo].add(link);
                     }
                 });
 
@@ -143,8 +132,8 @@ async function processLinks() {
         })
     );
 
-    renderUrlSectionBlock("NOLHS Template", nolhsMap, "#ff9800");
-    renderUrlSectionBlock("LHS Template", lhsMap, "#4caf50");
+    renderSectionBlocks("LHS Template", lhsBySection);
+    renderSectionBlocks("NOLHS Template", nolhsBySection);
     renderSimpleBlock("Not Present (#scroll missing)", [...notPresentSet]);
     renderSimpleBlock("404 Not Found", [...notFoundSet]);
 }
@@ -152,32 +141,24 @@ async function processLinks() {
 
 /* ---------- Render Helpers ---------- */
 
-function renderUrlSectionBlock(title, data, color) {
+function renderSectionBlocks(title, data) {
 
-    if (!Object.keys(data).length) return;
+    Object.keys(data)
+        .sort((a,b)=>a-b)
+        .forEach(sectionNo => {
 
-    const block = document.createElement("div");
-    block.className = "block";
+            const block = document.createElement("div");
+            block.className = "block";
 
-    const lines = [];
+            block.innerHTML = `
+                <h3>${title} (Section ${sectionNo})
+                    <button onclick="copyDynamic(this)">Copy</button>
+                </h3>
+                <pre>${[...data[sectionNo]].join("\n")}</pre>
+            `;
 
-    Object.keys(data).forEach(url => {
-
-        const sections = [...data[url]].sort((a,b)=>a-b);
-
-        lines.push(
-            `${url} → Section ${sections.join(", ")}`
-        );
-    });
-
-    block.innerHTML = `
-        <h3>${title}
-            <button onclick="copyDynamic(this)">Copy</button>
-        </h3>
-        <pre>${lines.join("\n")}</pre>
-    `;
-
-    document.getElementById("results").appendChild(block);
+            document.getElementById("results").appendChild(block);
+        });
 }
 
 
