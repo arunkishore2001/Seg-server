@@ -36,6 +36,7 @@ pre {
     height:100%;
     width:0%;
     border-radius:5px;
+    transition: width 0.3s ease;
 }
 </style>
 </head>
@@ -69,8 +70,8 @@ async function processLinks() {
     document.getElementById("results").innerHTML = "";
     document.getElementById("progressBar").style.width = "0%";
 
-    const lhsBySection = {};     // LHS grouped by section
-    const nolhsBySection = {};   // NOLHS grouped by section
+    const lhsBySection = {};
+    const nolhsBySection = {};
     const notPresentSet = new Set();
     const notFoundSet = new Set();
 
@@ -103,6 +104,9 @@ async function processLinks() {
                     return;
                 }
 
+                // 🔥 DEDUPLICATION FIX
+                const processedSections = new Map();
+
                 scrollDivs.forEach(scrollDiv => {
 
                     const parentSection = scrollDiv.closest("section");
@@ -111,7 +115,19 @@ async function processLinks() {
                     const sectionNo = allSections.indexOf(parentSection) + 1;
                     if (sectionNo < 1) return;
 
-                    const hasRhs = scrollDiv.querySelector(".rhs-cont");
+                    const hasRhs = !!scrollDiv.querySelector(".rhs-cont");
+
+                    if (processedSections.has(sectionNo)) {
+                        if (hasRhs) {
+                            processedSections.set(sectionNo, true);
+                        }
+                    } else {
+                        processedSections.set(sectionNo, hasRhs);
+                    }
+                });
+
+                // Add link only once per section
+                processedSections.forEach((hasRhs, sectionNo) => {
 
                     if (hasRhs) {
                         lhsBySection[sectionNo] ??= new Set();
@@ -147,14 +163,16 @@ function renderSectionBlocks(title, data) {
         .sort((a,b)=>a-b)
         .forEach(sectionNo => {
 
+            const links = [...data[sectionNo]].sort();
+
             const block = document.createElement("div");
             block.className = "block";
 
             block.innerHTML = `
-                <h3>${title} (Section ${sectionNo})
+                <h3>${title} (Section ${sectionNo}) — ${links.length}
                     <button onclick="copyDynamic(this)">Copy</button>
                 </h3>
-                <pre>${[...data[sectionNo]].join("\n")}</pre>
+                <pre>${links.join("\n")}</pre>
             `;
 
             document.getElementById("results").appendChild(block);
@@ -166,11 +184,13 @@ function renderSimpleBlock(title, links) {
 
     if (!links.length) return;
 
+    links.sort();
+
     const block = document.createElement("div");
     block.className = "block";
 
     block.innerHTML = `
-        <h3>${title}
+        <h3>${title} — ${links.length}
             <button onclick="copyDynamic(this)">Copy</button>
         </h3>
         <pre>${links.join("\n")}</pre>
